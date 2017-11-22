@@ -10,8 +10,8 @@
 #define sonarEchoPin 9
 #define sonarTrigPin 8
 
-#define Encoder_A 18
-#define Encoder_B 19
+#define Encoder_A 19
+#define Encoder_B 18
 
 //TIMER
 int timerCount = 0;
@@ -40,11 +40,13 @@ long sonarDuration, sonarDistance;
 int sonarWindow[5];
 
 //ENCODER
-//B-right, A-left
+//A-right, B-left
 //B: 81 ~ half turn; 162 ~ full turn
 //A: 82 ~ half turn; 164 ~ full turn
 int encoderACounter, encoderBCounter = 0;
+int encoderACorrectionCounter, encoderBCorrectionCounter = 0;
 bool isReadingEncoder = false;
+bool isEncoderCorrection = false;
 
 //-------------------------------------------//
 
@@ -120,26 +122,41 @@ ISR(TIMER1_COMPA_vect){
   //ISR beepitett fuggveny
   //akkor fut le, ha megtortenik a timer megszakitas
 
-  //if(isMoving) {
-  //  IRRead();
-  //  int sensorError = GetSensorError();
-  //  float sonarValue = SonarRead();
-  //}
+  if(isMoving) {
+    IRRead();
+    int sensorError = GetSensorError();
 
-  //MoveRobot();
+    //float sonarValue = SonarRead();
+    //if(sonarValue < 10) {
+    //  MotorStop();
+    //}
 
-  //timerCount++;
-  //if(timerCount == 50){
-  //  //ActOnEncoderCounters();
-  //  timerCount = 0;
-  //}
+    MoveRobot();
+  }
+
+  if(isEncoderCorrection) {
+    timerCount++;
+    if(timerCount == 50){
+      correctMotorError(encoderACorrectionCounter, encoderBCorrectionCounter);
+      ResetEncoderCorrection();
+      timerCount = 0;
+    }
+  }
 }
 
 void LeftSlalom() {
+  isMoving = false;
+  MotorStop();
   TurnLeftWithEncoder(45);
-  MoveForwardWithEncoder(300);
+  MotorStop();
+  MoveForwardWithEncoder2(300);
+  MotorStop();
   TurnRightWithEncoder(90);
-  MoveForwardWithEncoder(300);
+  MotorStop();
+  MoveForwardWithEncoder2(300);
+  MotorStop();
+  TurnLeftWithEncoder(45);
+  isMoving = true;
 }
 
 void CalibrateSensors(){
@@ -149,11 +166,31 @@ void CalibrateSensors(){
 void EncoderAHit(){
   if(isReadingEncoder)
     encoderACounter++;
+  if(isEncoderCorrection)
+    encoderACorrectionCounter++;
 }
 
 void EncoderBHit(){
   if(isReadingEncoder)
     encoderBCounter++;
+  if(isEncoderCorrection)
+    encoderBCorrectionCounter++;
+}
+
+void ResetEncoderCorrection() {
+  encoderACorrectionCounter = 0;
+  encoderBCorrectionCounter = 0;
+}
+
+void ResetEncoder() {
+  encoderACounter = 0;
+  encoderBCounter = 0;
+}
+
+void EnableEncoderCorrection() {
+  ResetEncoderCorrection();
+  //isReadingEncoder = true;
+  isEncoderCorrection = true;
 }
 
 void ActOnEncoderCounters(){
@@ -165,77 +202,53 @@ void ActOnEncoderCounters(){
 }
 
 void MoveRobot(){
-  if(isMoving){
-    if(lineError == 0){
-      MoveForward();
-    } else if (lineError == 5) {
-      MoveForward();
-    } else if(lineError < 0 && lineError >= -4){
-      if(previousLineError != 0 && abs(previousLineError) < abs(lineError) ) {
-        //stop
-        //turn back straight
-        //turn left 45 deg
-        //move forward
-      }
-      MotorStop();
-      TurnLeft();
-    } else if (lineError > 0 && lineError <= 4) {
-      if(previousLineError != 0 && abs(previousLineError) < abs(lineError) ) {
-        //stop
-        //turn back straight
-        //turn right 45 deg
-        //move forward
-      }
-      MotorStop();
-      TurnRight();
-    }
-    previousLineError = lineError;
-  } else if (lineError = 6) {
-    TurnRightWithEncoder(45);
-  } else if(lineError = -6) {
-    TurnLeftWithEncoder(45);
-  } else {
+  Serial.println(lineError);
+  if(lineError == 0){
+    MoveForward();
+  } else if (lineError == 5) {
+    MoveForward();
+  } else if(lineError < 0 && lineError >= -4){
     MotorStop();
+    TurnLeft();
+  } else if (lineError > 0 && lineError <= 4) {
+    MotorStop();
+    TurnRight();
   }
 }
 
 void MoveRobot2(){
-  if(isMoving){
-    if(lineError == 0){
-      MoveForward();
-    } else if (lineError == 5) {
-      MoveForward();
-    } else if(lineError < 0 && lineError >= -4){
-      MoveForward();
-      changeLineDelayCounter++;
-      if(previousLineError != 0 && previousLineError > lineError ) {
-        MotorStop();
-        TurnLeft();
-      }
-      if(changeLineDelayCounter >= 20) {
-        //stop
-        //turn back straight
-        //turn left 45 deg
-        //move forward
-      }
-    } else if (lineError > 0 && lineError <= 4) {
-      MoveForward();
-      changeLineDelayCounter++;
-      if(previousLineError != 0 && previousLineError < lineError ) {
-        MotorStop();
-        TurnRight();
-      }
-      if(changeLineDelayCounter >= 20) {
-        //stop
-        //turn back straight
-        //turn right 45 deg
-        //move forward
-      }
+  if(lineError == 0){
+    MoveForward();
+  } else if (lineError == 5) {
+    MoveForward();
+  } else if(lineError < 0 && lineError >= -4){
+    MoveForward();
+    changeLineDelayCounter++;
+    if(previousLineError != 0 && previousLineError > lineError ) {
+      changeLineDelayCounter = 0;
+      MotorStop();
+      TurnLeft();
     }
-    previousLineError = lineError;
-  } else {
-    MotorStop();
+    if(changeLineDelayCounter >= 20) {
+      //stop
+      //turn left 45 deg
+      //move forward
+    }
+  } else if (lineError > 0 && lineError <= 4) {
+    MoveForward();
+    changeLineDelayCounter++;
+    if(previousLineError != 0 && previousLineError < lineError ) {
+      changeLineDelayCounter = 0;
+      MotorStop();
+      TurnRight();
+    }
+    if(changeLineDelayCounter >= 20) {
+      //stop
+      //turn right 45 deg
+      //move forward
+    }
   }
+  previousLineError = lineError;
 }
 
 void IRRead() {
@@ -419,6 +432,18 @@ void FindLine(){
   MotorStop();
 }
 
+void MoveForwardWithEncoder2(int amountInMm) {
+  //EnableEncoderCorrection();
+  MoveForward();
+
+  double distanceInEncoderHits = amountInMm / 0.52;
+  if(encoderACounter >= distanceInEncoderHits || encoderBCounter >= distanceInEncoderHits) {
+    MotorStop();
+    isReadingEncoder = false;
+    ResetEncoder();
+  }
+}
+
 void MoveForwardWithEncoder(int amountInMm) {
   if(!isMoving && !isTurning) {
     isMoving = true;
@@ -437,39 +462,54 @@ void MoveForwardWithEncoder(int amountInMm) {
   }
 }
 
+void measureMoveForwardDistanceByEncoder() {
+
+}
+
+void correctMotorError(int encoderACountInterval, int encoderBCountInterval) {
+  if(encoderACountInterval > encoderBCountInterval) {
+    A_RPM_Correction--;
+  }
+  if(encoderBCountInterval > encoderACountInterval) {
+    B_RPM_Correction--;
+  }
+}
+
 void TurnLeftWithEncoder(int amountInDegrees) {
   if(!isTurning && !isMoving) {
     isTurning = true;
     MotorStop();
     isMoving = false;
     isReadingEncoder = true;
+    encoderBCounter = 0;
 
     TurnLeft();
   }
-  if(encoderACounter >= (amountInDegrees * 2.2)) {
+  if(encoderBCounter >= (amountInDegrees * 2.2)) {
     MotorStop();
+    ResetEncoder();
     isReadingEncoder = false;
-    encoderACounter = 0;
     isTurning = false;
-    isMoving = true;
+    //isMoving = true;
   }
 }
 
 void TurnRightWithEncoder(int amountInDegrees) {
   if(!isTurning && !isMoving) {
+    isTurning = true;
     MotorStop();
     isMoving = false;
     isReadingEncoder = true;
-    encoderBCounter = 0;
+    encoderACounter = 0;
 
     TurnRight();
   }
-  if(encoderBCounter >= (amountInDegrees * 2.2)) {
+  if(encoderACounter >= (amountInDegrees * 2.2)) {
     MotorStop();
+    ResetEncoder();
     isReadingEncoder = false;
-    encoderBCounter = 0;
     isTurning = false;
-    isMoving = true;
+    //isMoving = true;
   }
 }
 
@@ -500,6 +540,7 @@ void MoveForward(){
 }
 
 void MotorStop(){
+  //isMoving = false;
   A_motorStop();
   B_motorStop();
 }
