@@ -22,6 +22,8 @@ int lineError = 0;
 int previousLineError = 0;
 int sensorValues[5] = {0, 0, 0, 0, 0};
 int changeLineDelayCounter = 0;
+const int LINE_ERROR_WINDOW_SIZE = 5;
+int lineErrorWindow [LINE_ERROR_WINDOW_SIZE] = {0, 0, 0, 0, 0};
 
 //MOTOR
 int A_RPM_Correction = 0;
@@ -260,6 +262,35 @@ void IRRead() {
     Serial.print(" ");
   }
   Serial.println();
+}
+
+void LineErrorWindowPush(int errorValue) {
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    lineErrorWindow[i + 1] = lineErrorWindow[i];
+  }
+  lineErrorWindow[0] = errorValue;
+}
+
+bool IsLineErrorChanged() {
+  return lineErrorWindow[0] == lineErrorWindow[1];
+}
+
+int LineErrorChangeAmount() {
+  int changeAmount = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    if(lineErrorWindow[i] != lineErrorWindow[i + 1])
+      changeAmount++;
+  }
+  return changeAmount;
+}
+
+bool IsLineErrorChangePermanent() {
+  int oldLineError = lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 1];
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 2; i++) {
+    if(lineErrorWindow[i] != lineErrorWindow[i + 1])
+      return false;
+  }
+  return true;
 }
 
 void SonarInit(){
