@@ -22,8 +22,9 @@ int lineError = 0;
 int previousLineError = 0;
 int sensorValues[5] = {0, 0, 0, 0, 0};
 int changeLineDelayCounter = 0;
-const int LINE_ERROR_WINDOW_SIZE = 5;
-int lineErrorWindow [LINE_ERROR_WINDOW_SIZE] = {0, 0, 0, 0, 0};
+const int LINE_ERROR_WINDOW_SIZE = 20;
+const int LINE_ERROR_WINDOW_SAFE = 3;
+int lineErrorWindow [LINE_ERROR_WINDOW_SIZE];
 
 //MOTOR
 int A_RPM_Correction = 0;
@@ -31,11 +32,11 @@ int B_RPM_Correction = 0;
 const int RPM = 80;
 const int TURN_CONSTANT = 10;
 bool isMoving = false;
-bool isTurning = false;
 
 //SONAR
 const int sonarMaximumRange = 200;
 const int sonarMinimumRange = 0;
+const int sonarDistanceRestriction = 10;
 
 long sonarDuration, sonarDistance;
 
@@ -49,6 +50,15 @@ int encoderACounter, encoderBCounter = 0;
 int encoderACorrectionCounter, encoderBCorrectionCounter = 0;
 bool isReadingEncoder = false;
 bool isEncoderCorrection = false;
+
+//SPECIAL
+bool isSpecialTaskRunning = false;
+bool isTurning = false;
+bool isMovingForward = false;
+bool isFindingLine = false;
+bool isScriptRunning = false;
+bool isObstacleCourse = false;
+int scriptTaskCounter = 0;
 
 //-------------------------------------------//
 
@@ -69,6 +79,9 @@ void setup() {
 
   //calibrate
   CalibrateSensors();
+
+  //line error window
+  LineErrorWindowSetup();  
 
   //timer
   Timer1Init();
@@ -111,6 +124,7 @@ void Timer1Init(){
   //ha egy masodpercet akarunk (1000ms): 1000/0,064 = 15625
   //0tol szamol, ezert kivonunk belole egyet: 15624
   OCR1A = 780;
+  //OCR1A = 1560;
 
   //vege jelzo interrupt bekapcsolasa
   //ha elerte a szamlalo a megadott erteket, az OCIE1A flag bebillen es megtortenik a magszakitas
@@ -124,41 +138,95 @@ ISR(TIMER1_COMPA_vect){
   //ISR beepitett fuggveny
   //akkor fut le, ha megtortenik a timer megszakitas
 
-  if(isMoving) {
-    IRRead();
-    int sensorError = GetSensorError();
+  if(!isScriptRunning && !isObstacleCourse) {
+    /*float sonarValue = SonarRead();
+    if(sonarValue < sonarDistanceRestriction && sonarValue >= sonarMinimumRange) {
+      MotorStop();
+      isMoving = false;
+    } else if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+      //isMoving = true;
+    }*/
 
-    //float sonarValue = SonarRead();
-    //if(sonarValue < 10) {
-    //  MotorStop();
-    //}
+    if(isMoving && !isFindingLine) {
+      if(!isSpecialTaskRunning) {
+        IRRead();
+        int sensorError = GetSensorError();
+      }
+      MoveRobot();
+    }
 
-    MoveRobot();
+    if(isMoving && isFindingLine) {
+      IRRead();
+      int sensorError = GetSensorError();
+      MoveRobotAndFindLine();
+    }
+  }
+
+  if(isScriptRunning) {
+    isMoving = false;
+    DoSlalom();
+  }
+
+  if(isObstacleCourse) {
+    MotorStop();
+    isMoving = false;
   }
 
   if(isEncoderCorrection) {
     timerCount++;
-    if(timerCount == 50){
+    if(timerCount == 100){
       correctMotorError(encoderACorrectionCounter, encoderBCorrectionCounter);
       ResetEncoderCorrection();
+      Serial.println(A_RPM_Correction);
+      Serial.println(B_RPM_Correction);
+
       timerCount = 0;
     }
   }
 }
 
-void LeftSlalom() {
-  isMoving = false;
-  MotorStop();
-  TurnLeftWithEncoder(45);
-  MotorStop();
-  MoveForwardWithEncoder2(300);
-  MotorStop();
-  TurnRightWithEncoder(90);
-  MotorStop();
-  MoveForwardWithEncoder2(300);
-  MotorStop();
-  TurnLeftWithEncoder(45);
-  isMoving = true;
+void DoSlalom() {
+  switch (scriptTaskCounter) {
+    case 0:
+      MoveForwardWithEncoder(30);
+      break;
+    case 1:
+      TurnRightWithEncoder(25);
+      break;
+    case 2:
+      MoveForwardWithEncoder(30);
+      break;
+    case 3:
+      TurnLeftWithEncoder(25);
+      break;
+    case 4:
+      MoveForwardWithEncoder(30);
+      break;
+    case 5:
+      TurnLeftWithEncoder(25);
+      break;
+    case 6:
+      MoveForwardWithEncoder(30);
+      break;
+    case 7:
+      TurnRightWithEncoder(25);
+      break;
+    case 8:
+      MoveForwardWithEncoder(30);
+      break;
+    case 9:
+      TurnRightWithEncoder(25);
+      break;
+    case 10:
+      MoveForwardWithEncoder(30);
+      break;
+    case 11:
+      TurnLeftWithEncoder(25);
+      break;
+    case 12:
+      isScriptRunning = false;
+      isMoving = true;
+  }
 }
 
 void CalibrateSensors(){
@@ -190,9 +258,14 @@ void ResetEncoder() {
 }
 
 void EnableEncoderCorrection() {
-  ResetEncoderCorrection();
-  //isReadingEncoder = true;
+  //ResetEncoderCorrection();
+  isReadingEncoder = true;
   isEncoderCorrection = true;
+}
+
+void DisableEncoderCorrection() {
+  ResetEncoderCorrection();
+  isEncoderCorrection = false;
 }
 
 void ActOnEncoderCounters(){
@@ -204,6 +277,10 @@ void ActOnEncoderCounters(){
 }
 
 void MoveRobot(){
+  //Serial.println(lineError);
+  LineErrorWindowPush(lineError);
+  //Serial.println(LineErrorWindowProcess());
+  lineError = LineErrorWindowProcess();
   Serial.println(lineError);
   if(lineError == 0){
     MoveForward();
@@ -215,6 +292,33 @@ void MoveRobot(){
   } else if (lineError > 0 && lineError <= 4) {
     MotorStop();
     TurnRight();
+  } else if(lineError == 6) {
+    TurnRightWithEncoder(30);
+  } else if(lineError == -6) {
+    TurnLeftWithEncoder(30);
+  } else if(lineError == 7) {
+    isScriptRunning = true;
+  } else if(lineError == 8) {
+    MoveForward();
+  } else if(lineError == 9) {
+    isObstacleCourse = true;
+  }
+}
+
+void MoveRobotAndFindLine() {
+  //LineErrorWindowPush(lineError);
+  //lineError = LineErrorWindowProcess();
+  if(lineError == 0){
+    isFindingLine = false;
+    MoveForward();
+  } else if (lineError == 5) {
+    MoveForward();
+  } else if(lineError < 0 && lineError >= -4){
+    MotorStop();
+    TurnRight();
+  } else if (lineError > 0 && lineError <= 4) {
+    MotorStop();
+    TurnLeft();
   }
 }
 
@@ -254,25 +358,44 @@ void MoveRobot2(){
 }
 
 void IRRead() {
+  Serial.println();
   for (int i = 0; i < 5; i++) {
     sensorValues[i] = analogRead(i);
-
-    //Debug
     Serial.print(sensorValues[i]);
     Serial.print(" ");
   }
-  Serial.println();
+}
+
+void LineErrorWindowSetup() {
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE; i++)
+    lineErrorWindow[i] = 0;
+}
+
+int LineErrorWindowProcess() {
+  if(IsLineErrorChangePermanent()) {
+    if(lineErrorWindow[0] < 0)
+      return -6;
+    else if(lineErrorWindow[0] > 0 && lineErrorWindow[0] < 5)
+      return 6;
+  } else if (IsScriptStarting()) {
+    return 7;
+  } else if (lineErrorWindow[0] == 7) {
+    return 0;
+  } else if(IsObstacleCourseStarting()) {
+    return 9;
+  }
+  return lineErrorWindow[0];
 }
 
 void LineErrorWindowPush(int errorValue) {
-  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
-    lineErrorWindow[i + 1] = lineErrorWindow[i];
+  for(int i = LINE_ERROR_WINDOW_SIZE - 1; i > 0; i--) {
+    lineErrorWindow[i] = lineErrorWindow[i - 1];
   }
   lineErrorWindow[0] = errorValue;
 }
 
 bool IsLineErrorChanged() {
-  return lineErrorWindow[0] == lineErrorWindow[1];
+  return lineErrorWindow[0] != lineErrorWindow[1];
 }
 
 int LineErrorChangeAmount() {
@@ -284,9 +407,56 @@ int LineErrorChangeAmount() {
   return changeAmount;
 }
 
+bool IsLineErrorSafe() {
+  for(int i = 0; i < LINE_ERROR_WINDOW_SAFE; i++) {
+    if(lineErrorWindow[i] != lineErrorWindow[i + 1])
+      return false;
+  }
+  return true;
+}
+
+bool IsLineErrorNormalizing() {
+  return abs(lineErrorWindow[0]) < abs(lineErrorWindow[1]);
+}
+
+bool IsObstacleCourseStarting() {
+  int obstacleCourseCounter = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE; i++) {
+    if(lineErrorWindow[i] == 8) {
+      obstacleCourseCounter++;
+    }
+    if(obstacleCourseCounter >= 4)
+      return true;
+  }
+  return false;
+}
+bool IsScriptStarting() {
+  if(lineErrorWindow[0] != 7)
+    return false;
+  int scriptCounter = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    if(lineErrorWindow[i] == 7)
+      scriptCounter++;
+    if(scriptCounter >= 8)
+      return true;
+  }
+  return false;
+}
+
 bool IsLineErrorChangePermanent() {
   int oldLineError = lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 1];
-  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 2; i++) {
+  int errorCounter = 0;
+  if(lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 1] == lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 2])
+    return false;
+  /*if(lineErrorWindow[0] == lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 1]) {
+    for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+      if(lineErrorWindow[i] != lineErrorWindow[i + 1])
+        errorCounter++;
+      if(errorCounter >= LINE_ERROR_WINDOW_SIZE * 0.1)
+        return false;
+    }
+  }*/
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
     if(lineErrorWindow[i] != lineErrorWindow[i + 1])
       return false;
   }
@@ -433,6 +603,33 @@ int GetSensorError(){
     ) {
       //hurok
       lineError = 1;
+    } /*else if(
+      sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] < DEFAULT_SENSOR_DISTANCE
+    ) {
+      //hurok
+      lineError = 1;
+    } else if(
+      sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] >= DEFAULT_SENSOR_DISTANCE
+    ) {
+      //hurok
+      lineError = 1;
+    } else if(
+      sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[3] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] >= DEFAULT_SENSOR_DISTANCE
+    ) {
+      //hurok
+      lineError = 1;
     } else if(
       sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
@@ -440,17 +637,17 @@ int GetSensorError(){
       sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[4] >= DEFAULT_SENSOR_DISTANCE
     ) {
-      //p fordulo
-      lineError = 0;
-    } else if(
+      //p fordulo, vagy akadalypalya
+      lineError = 8;
+    }*/ else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[4] < DEFAULT_SENSOR_DISTANCE
     ) {
-      //szlalom, vagy akadalypalya
-
+      //szlalom (script)
+      lineError = 7;
     } else {
       //LOST LINE
       lineError = 5; 
@@ -464,7 +661,7 @@ void FindLine(){
 }
 
 void MoveForwardWithEncoder2(int amountInMm) {
-  //EnableEncoderCorrection();
+  EnableEncoderCorrection();
   MoveForward();
 
   double distanceInEncoderHits = amountInMm / 0.52;
@@ -480,15 +677,19 @@ void MoveForwardWithEncoder(int amountInMm) {
     isMoving = true;
     isReadingEncoder = true;
     MoveForward();
+    EnableEncoderCorrection();
   }
   if(isMoving) {
     double distanceInEncoderHits = amountInMm / 0.52;
     if(encoderACounter >= distanceInEncoderHits || encoderBCounter >= distanceInEncoderHits) {
       MotorStop();
+      DisableEncoderCorrection();
       isMoving = false;
       isReadingEncoder = false;
       encoderACounter = 0;
       encoderBCounter = 0;
+      if(isScriptRunning)
+        scriptTaskCounter++;
     }
   }
 }
@@ -506,41 +707,61 @@ void correctMotorError(int encoderACountInterval, int encoderBCountInterval) {
   }
 }
 
-void TurnLeftWithEncoder(int amountInDegrees) {
-  if(!isTurning && !isMoving) {
-    isTurning = true;
+void TurnLeftWithEncoder2(int amountInDegrees) {
+  if(!isSpecialTaskRunning) {
     MotorStop();
-    isMoving = false;
     isReadingEncoder = true;
     encoderBCounter = 0;
+    isSpecialTaskRunning = true;
+  }
 
+  while(encoderBCounter < amountInDegrees) {
     TurnLeft();
   }
-  if(encoderBCounter >= (amountInDegrees * 2.2)) {
+
+  MotorStop();
+  ResetEncoder();
+  isReadingEncoder = false;
+  isSpecialTaskRunning = false;
+}
+
+void TurnLeftWithEncoder(int amountInDegrees) {
+  if(!isSpecialTaskRunning) {
+    MotorStop();
+    isReadingEncoder = true;
+    encoderBCounter = 0;
+    isSpecialTaskRunning = true;
+    TurnLeft();
+  }
+  if(encoderBCounter >= (amountInDegrees)) {
     MotorStop();
     ResetEncoder();
     isReadingEncoder = false;
-    isTurning = false;
-    //isMoving = true;
+    isSpecialTaskRunning = false;
+    isFindingLine = true;
+
+    if(isScriptRunning)
+      scriptTaskCounter++;
   }
 }
 
 void TurnRightWithEncoder(int amountInDegrees) {
-  if(!isTurning && !isMoving) {
-    isTurning = true;
+  if(!isSpecialTaskRunning) {
     MotorStop();
-    isMoving = false;
     isReadingEncoder = true;
     encoderACounter = 0;
-
+    isSpecialTaskRunning = true;
     TurnRight();
   }
-  if(encoderACounter >= (amountInDegrees * 2.2)) {
+  if(encoderACounter >= (amountInDegrees)) {
     MotorStop();
     ResetEncoder();
     isReadingEncoder = false;
-    isTurning = false;
-    //isMoving = true;
+    isSpecialTaskRunning = false;
+    isFindingLine = true;
+
+    if(isScriptRunning)
+      scriptTaskCounter++;
   }
 }
 
