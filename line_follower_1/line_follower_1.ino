@@ -372,12 +372,12 @@ void LineErrorWindowSetup() {
 }
 
 int LineErrorWindowProcess() {
-  if(IsLineErrorChangePermanent()) {
+  /*if(IsLineErrorChangePermanent()) {
     if(lineErrorWindow[0] < 0)
       return -6;
     else if(lineErrorWindow[0] > 0 && lineErrorWindow[0] < 5)
       return 6;
-  } else if (IsScriptStarting()) {
+  } else*/ if (IsScriptStarting()) {
     return 7;
   } else if (lineErrorWindow[0] == 7) {
     return 0;
@@ -630,7 +630,7 @@ int GetSensorError(){
     ) {
       //hurok
       lineError = 1;
-    } else if(
+    }*/ else if(
       sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
@@ -639,7 +639,7 @@ int GetSensorError(){
     ) {
       //p fordulo, vagy akadalypalya
       lineError = 8;
-    }*/ else if(
+    } else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
