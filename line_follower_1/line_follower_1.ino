@@ -282,6 +282,24 @@ void MoveRobot(){
   //Serial.println(LineErrorWindowProcess());
   lineError = LineErrorWindowProcess();
   Serial.println(lineError);
+ 
+  bool dontTurnRight = false;
+
+   if (IsChangeLaneLeft())
+  {
+    MotorStop();
+    TurnLeftSlight();
+    dontTurnRight = true;
+  }
+
+  if (IsChangeLaneRight())
+  {
+    MotorStop();
+    TurnRightSlight();
+  }
+
+  if (!dontTurnRight)
+ {
   if(lineError == 0){
     MoveForward();
   } else if (lineError == 5) {
@@ -289,10 +307,10 @@ void MoveRobot(){
   } else if(lineError < 0 && lineError >= -4){
     MotorStop();
     TurnLeft();
-  } else if (lineError > 0 && lineError <= 4) {
+  } else if (lineError > 0 && lineError <= 4 && !dontTurnRight) {
     MotorStop();
     TurnRight();
-  } else if(lineError == 6) {
+  } else if(lineError == 6 && !dontTurnRight) {
     TurnRightWithEncoder(30);
   } else if(lineError == -6) {
     TurnLeftWithEncoder(30);
@@ -303,6 +321,7 @@ void MoveRobot(){
   } else if(lineError == 9) {
     isObstacleCourse = true;
   }
+ } dontTurnRight = false;
 }
 
 void MoveRobotAndFindLine() {
@@ -430,6 +449,7 @@ bool IsObstacleCourseStarting() {
   }
   return false;
 }
+
 bool IsScriptStarting() {
   if(lineErrorWindow[0] != 7)
     return false;
@@ -442,6 +462,34 @@ bool IsScriptStarting() {
   }
   return false;
 }
+
+bool IsChangeLaneLeft() {
+  if(lineErrorWindow[0] != 15)
+    return false;
+  int temp = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    if(lineErrorWindow[i] == 15)
+      temp++;
+    if(temp >= 3)
+      return true;
+  }
+  return false;
+}
+
+bool IsChangeLaneRight() {
+  if(lineErrorWindow[0] != 16)
+    return false;
+  int temp = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    if(lineErrorWindow[i] == 16)
+      temp++;
+    if(temp >= 5)
+      return true;
+  }
+  return false;
+}
+
+
 
 bool IsLineErrorChangePermanent() {
   int oldLineError = lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 1];
@@ -639,16 +687,40 @@ int GetSensorError(){
     ) {
       //p fordulo, vagy akadalypalya
       lineError = 8;
-    } else if(
+    }
+
+    else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[4] < DEFAULT_SENSOR_DISTANCE
-    ) {
-      //szlalom (script)
-      lineError = 7;
-    } else {
+    )
+  {
+    //szlalom
+    lineError=7;
+  }
+    else if(
+      sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
+    //  sensorValues[3] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] >= DEFAULT_SENSOR_DISTANCE
+    ) 
+    {
+      lineError = 15;
+    }
+    else if(
+      sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
+     // sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[3] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] < DEFAULT_SENSOR_DISTANCE
+    ) 
+    {
+      lineError = 16;
+    } 
+     else {
       //LOST LINE
       lineError = 5; 
     }
@@ -826,5 +898,18 @@ void B_motorStop(){
   digitalWrite(B_MotorDir1, LOW);
   digitalWrite(B_MotorDir2, LOW);
   digitalWrite(B_MotorEnable, LOW);
+}
+
+void TurnLeftSlight(){
+  B_motorF();
+  analogWrite(B_MotorEnable, 56);
+  A_motorStop();
+}
+
+void TurnRightSlight()
+{
+  A_motorF();
+  analogWrite(A_MotorEnable, 70);
+  B_motorStop();
 }
 
