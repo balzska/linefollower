@@ -27,7 +27,7 @@ const int LINE_ERROR_WINDOW_SAFE = 3;
 int lineErrorWindow [LINE_ERROR_WINDOW_SIZE];
 
 //MOTOR
-int A_RPM_Correction = 0;
+int A_RPM_Correction = 5;
 int B_RPM_Correction = 0;
 const int RPM = 80;
 const int TURN_CONSTANT = 10;
@@ -36,7 +36,7 @@ bool isMoving = false;
 //SONAR
 const int sonarMaximumRange = 200;
 const int sonarMinimumRange = 0;
-const int sonarDistanceRestriction = 10;
+const int sonarDistanceRestriction = 20;
 
 long sonarDuration, sonarDistance;
 
@@ -165,7 +165,7 @@ ISR(TIMER1_COMPA_vect){
 
     if (isLaneChangeLeft)
     {
-      while (laneChangeTimeCounter <= 8)
+      while (laneChangeTimeCounter <= 6)
       {
       TurnLeft();
       laneChangeTimeCounter++;
@@ -174,7 +174,7 @@ ISR(TIMER1_COMPA_vect){
 
     if (isLaneChangeRight)
     {
-      while (laneChangeTimeCounter <= 8)
+      while (laneChangeTimeCounter <= 6)
       {
       TurnRight();
       laneChangeTimeCounter++;
@@ -230,6 +230,26 @@ void DoObstacleCourse() {
     
     //reached the edge of the map, try something else
     MotorStop();
+
+    if (sensorError == -4)
+    {
+      MoveBackwardWithEncoder2(10);
+      OCDisplacementInUnit--;
+      TurnRightWithEncoder2(50);
+     
+    }
+
+    if (sensorError == 4)
+    {
+      MoveBackwardWithEncoder2(10);
+      OCDisplacementInUnit--;
+      TurnLeftWithEncoder2(40);   
+    }
+
+    else
+    {
+    }
+
     OCIsWorking = false;
     return;
   }
@@ -251,7 +271,7 @@ void DoObstacleCourse() {
     OCTurnPreferedDirection();
     sonarValue = SimpleSonarRead();
 
-    if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+    if(sonarValue > sonarDistanceRestriction) {
       OCMoveForwardOneUnit();
       OCDisplacementInUnit++;
       OCTurnOppositePreferedDirection();
@@ -264,7 +284,7 @@ void DoObstacleCourse() {
       return;
     }
     
-  } else if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+  } else if(sonarValue > sonarDistanceRestriction) {
     //move forward one unit
     //if movement log 0
     //  return
@@ -279,13 +299,19 @@ void DoObstacleCourse() {
     //    turn prefered direction
     //    return
     OCMoveForwardOneUnit();
+
+    OCMoveForwardOneUnit();
+
+    OCMoveForwardOneUnit();
+
+    OCMoveForwardOneUnit();
     if(OCDisplacementInUnit == 0) {
       OCIsWorking = false;
       return;
     } else {
       OCTurnOppositePreferedDirection();
       sonarValue = SimpleSonarRead();
-      if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+      if(sonarValue > sonarDistanceRestriction) {
         OCMoveForwardOneUnit();
         OCDisplacementInUnit--;
         OCTurnPreferedDirection();
@@ -304,30 +330,30 @@ void DoObstacleCourse() {
 void OCTurnPreferedDirection() {
   OCIsWorking = true;
   if(OCIsPreferedSideRight)
-    TurnRightWithEncoder2(90);
+    TurnRightWithEncoder2(50);
   else
-    TurnLeftWithEncoder2(90);
+    TurnLeftWithEncoder2(40);
   OCIsWorking = false;
 }
 
 void OCTurnOppositePreferedDirection() {
   OCIsWorking = true;
   if(!OCIsPreferedSideRight)
-    TurnRightWithEncoder2(90);
+    TurnRightWithEncoder2(50);
   else
-    TurnLeftWithEncoder2(90);
+    TurnLeftWithEncoder2(40);
   OCIsWorking = false;
 }
 
 void OCTurnLeft(){
   OCIsWorking = true;  
-  TurnLeftWithEncoder2(90);
+  TurnLeftWithEncoder2(40);
   OCIsWorking = false;
 }
 
 void OCTurnRight(){
   OCIsWorking = true;
-  TurnRightWithEncoder2(90);
+  TurnRightWithEncoder2(50);
   OCIsWorking = false;
 }
 
@@ -635,7 +661,7 @@ bool IsObstacleCourseStarting() {
     if(lineErrorWindow[i] == 8) {
       obstacleCourseCounter++;
     }
-    if(obstacleCourseCounter >= 4)
+    if(obstacleCourseCounter >= 3)
      {
       return true;
      }
@@ -650,7 +676,7 @@ bool IsScriptStarting() {
   for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
     if(lineErrorWindow[i] == 7)
       scriptCounter++;
-    if(scriptCounter >= 8)
+    if(scriptCounter >= 4)
       return true;
   }
   return false;
@@ -777,7 +803,7 @@ int GetSensorError(){
     ) {
       //NORMAL RIGHT
       lineError = 2;
-    } else if(
+    }/* else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
@@ -786,7 +812,7 @@ int GetSensorError(){
     ) {
       //SLIGHT RIGHT
       lineError = 1;
-    } else if(
+    }*/ else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
@@ -813,7 +839,7 @@ int GetSensorError(){
     ) {
       //NORMAL LEFT
       lineError = -2;
-    } else if(
+    } /*else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
@@ -822,7 +848,7 @@ int GetSensorError(){
     ) {
       //SLIGHT LEFT
       lineError = -1;
-    } else if(
+    } */else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
      // sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
@@ -928,6 +954,23 @@ void MoveForwardWithEncoder2(int amountInMm) {
   return;
 }
 
+void MoveBackwardWithEncoder2(int amountInMm) {
+  noInterrupts();
+  isReadingEncoder = true;
+  interrupts();
+  while(encoderACounter < amountInMm || encoderBCounter < amountInMm) {
+    MoveBackward();
+    Serial.println(encoderACounter);
+    Serial.println(encoderBCounter);
+  }
+  MotorStop();
+  noInterrupts();
+  isReadingEncoder = false;
+  interrupts();
+  ResetEncoder();
+  return;
+}
+
 void MoveForwardWithEncoder(int amountInMm) {
   if(!isMoving && !isTurning) {
     isMoving = true;
@@ -964,12 +1007,16 @@ void correctMotorError(int encoderACountInterval, int encoderBCountInterval) {
 }
 
 void TurnLeftWithEncoder2(int amountInDegrees) {
+  noInterrupts();
   isReadingEncoder = true;
+  interrupts();
   while(encoderBCounter < amountInDegrees) {
     TurnLeft();
   }
   MotorStop();
+  noInterrupts();
   isReadingEncoder = false;
+  interrupts();
   ResetEncoder();
   return;
 }
@@ -995,12 +1042,16 @@ void TurnLeftWithEncoder(int amountInDegrees) {
 }
 
 void TurnRightWithEncoder2(int amountInDegrees) {
+  noInterrupts();
   isReadingEncoder = true;
+  interrupts();
   while(encoderACounter < amountInDegrees) {
     TurnRight();
   }
   MotorStop();
+  noInterrupts();
   isReadingEncoder = false;
+  interrupts();
   ResetEncoder();
   return;
 }
@@ -1048,6 +1099,13 @@ void MoveForward(){
   A_motorF();
   analogWrite(A_MotorEnable, RPM + A_RPM_Correction);
   B_motorF();
+  analogWrite(B_MotorEnable, RPM + B_RPM_Correction);
+}
+
+void MoveBackward(){
+  A_motorR();
+  analogWrite(A_MotorEnable, RPM + A_RPM_Correction);
+  B_motorR();
   analogWrite(B_MotorEnable, RPM + B_RPM_Correction);
 }
 
