@@ -629,34 +629,6 @@ bool IsScriptStarting() {
   return false;
 }
 
-bool IsChangeLaneLeft() {
-  if(lineErrorWindow[0] != 15)
-    return false;
-  int temp = 0;
-  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
-    if(lineErrorWindow[i] == 15)
-      temp++;
-    if(temp >= 3)
-      return true;
-  }
-  return false;
-}
-
-bool IsChangeLaneRight() {
-  if(lineErrorWindow[0] != 16)
-    return false;
-  int temp = 0;
-  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
-    if(lineErrorWindow[i] == 16)
-      temp++;
-    if(temp >= 5)
-      return true;
-  }
-  return false;
-}
-
-
-
 bool IsLineErrorChangePermanent() {
   int oldLineError = lineErrorWindow[LINE_ERROR_WINDOW_SIZE - 1];
   int errorCounter = 0;
@@ -869,6 +841,7 @@ int GetSensorError(){
       //p fordulo, vagy akadalypalya
       lineError = 8;
     }
+    else if (
       sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
   //    sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&

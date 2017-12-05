@@ -2,5 +2,5 @@
     "board": "arduino:avr:mega",
     "configuration": "cpu=atmega2560",
     "sketch": "line_follower_1.ino",
-    "port": "/dev/cu.wchusbserial1410"
+    "port": "COM3"
 }
