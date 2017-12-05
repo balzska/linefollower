@@ -46,9 +46,9 @@ int sonarWindow[5];
 //A-right, B-left
 //B: 81 ~ half turn; 162 ~ full turn
 //A: 82 ~ half turn; 164 ~ full turn
-int encoderACounter, encoderBCounter = 0;
-int encoderACorrectionCounter, encoderBCorrectionCounter = 0;
-bool isReadingEncoder = false;
+volatile int encoderACounter, encoderBCounter = 0;
+volatile int encoderACorrectionCounter, encoderBCorrectionCounter = 0;
+volatile bool isReadingEncoder = false;
 bool isEncoderCorrection = false;
 
 //SPECIAL
@@ -135,7 +135,7 @@ void Timer1Init(){
   //ha egy masodpercet akarunk (1000ms): 1000/0,064 = 15625
   //0tol szamol, ezert kivonunk belole egyet: 15624
   OCR1A = 780;
-  //OCR1A = 1560;
+  // OCR1A = 1560;
 
   //vege jelzo interrupt bekapcsolasa
   //ha elerte a szamlalo a megadott erteket, az OCIE1A flag bebillen es megtortenik a magszakitas
@@ -148,6 +148,8 @@ void Timer1Init(){
 ISR(TIMER1_COMPA_vect){
   //ISR beepitett fuggveny
   //akkor fut le, ha megtortenik a timer megszakitas
+
+  Serial.println("ISR START");
 
   isLaneChangeLeft = IsChangeLaneLeft();
   isLaneChangeRight = IsChangeLaneRight();
@@ -179,7 +181,7 @@ ISR(TIMER1_COMPA_vect){
       }
     }
 
-    if(isMoving && !isFindingLine) {
+    if(isMoving && !isFindingLine  && !isObstacleCourse) {
       if(!isSpecialTaskRunning) {
         IRRead();
         int sensorError = GetSensorError();
@@ -202,6 +204,7 @@ ISR(TIMER1_COMPA_vect){
   if(isObstacleCourse) {
     if(!OCIsWorking)
       DoObstacleCourse();
+   // Serial.println("daaasasd");
   }
 
   if(isEncoderCorrection) {
@@ -218,15 +221,22 @@ ISR(TIMER1_COMPA_vect){
 }
 
 void DoObstacleCourse() {
+  MotorStop();
+  Serial.println("OBSTACLE");
   OCIsWorking = true;
   IRRead();
   int sensorError = GetSensorError();
   if(sensorError != 5) {
+    
     //reached the edge of the map, try something else
     MotorStop();
+    OCIsWorking = false;
+    return;
   }
+  Serial.println(sensorError);
 
-  float sonarValue = SimpleSonarRead();
+  long sonarValue = SimpleSonarRead();
+  Serial.println(sonarValue);
   if(sonarValue < sonarDistanceRestriction && sonarValue >= sonarMinimumRange) {
     //turn prefered direction
     //if the path is clear 
@@ -240,6 +250,7 @@ void DoObstacleCourse() {
     //  return
     OCTurnPreferedDirection();
     sonarValue = SimpleSonarRead();
+
     if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
       OCMoveForwardOneUnit();
       OCDisplacementInUnit++;
@@ -287,23 +298,24 @@ void DoObstacleCourse() {
       }
     }
   }
+  OCIsWorking = false;
 }
 
 void OCTurnPreferedDirection() {
   OCIsWorking = true;
   if(OCIsPreferedSideRight)
-    TurnRightWithEncoder(90);
+    TurnRightWithEncoder2(90);
   else
-    TurnLeftWithEncoder(90);
+    TurnLeftWithEncoder2(90);
   OCIsWorking = false;
 }
 
 void OCTurnOppositePreferedDirection() {
   OCIsWorking = true;
   if(!OCIsPreferedSideRight)
-    TurnRightWithEncoder(90);
+    TurnRightWithEncoder2(90);
   else
-    TurnLeftWithEncoder(90);
+    TurnLeftWithEncoder2(90);
   OCIsWorking = false;
 }
 
@@ -374,15 +386,25 @@ void CalibrateSensors(){
 }
 
 void EncoderAHit(){
+  Serial.println("HIT");
   if(isReadingEncoder)
+  {
+  noInterrupts();
     encoderACounter++;
+    interrupts();
+  }
   if(isEncoderCorrection)
     encoderACorrectionCounter++;
 }
 
 void EncoderBHit(){
+  Serial.println("HITB");
   if(isReadingEncoder)
-    encoderBCounter++;
+  {
+    noInterrupts();
+      encoderBCounter++;
+      interrupts();
+    }
   if(isEncoderCorrection)
     encoderBCorrectionCounter++;
 }
@@ -421,49 +443,52 @@ void MoveRobot(){
   LineErrorWindowPush(lineError);
   //Serial.println(LineErrorWindowProcess());
   lineError = LineErrorWindowProcess();
-  Serial.println(lineError);
-
-laneChangeTimeCounter = 0;
-
-  bool dontTurnRight = false;
   
- /*   if (IsChangeLaneLeft())
+
+    laneChangeTimeCounter = 0;
+
+    Serial.println(lineError);
+     
+    if(lineError == 9) 
     {
-      MotorStop();
-      TurnLeftSlight();
-      dontTurnRight = true;
-    }
-  
-    if (IsChangeLaneRight())
-    {
-      MotorStop();
-      TurnRightSlight();
-    }
-*/
-    if (!dontTurnRight)
-    {
-  if(lineError == 0){
+        isObstacleCourse = true;
+        Serial.println("anyadat");
+    } 
+    
+    else if(lineError == 0)
+  {
+      MoveForward();
+  } 
+  else if (lineError == 5) 
+  {
     MoveForward();
-  } else if (lineError == 5) {
-    MoveForward();
-  } else if(lineError < 0 && lineError >= -4){
+  }
+  else if(lineError < 0 && lineError >= -4)
+  {
     MotorStop();
     TurnLeft();
-  } else if (lineError > 0 && lineError <= 4 && !dontTurnRight) {
+  } 
+  else if (lineError > 0 && lineError <= 4)
+  {
     MotorStop();
     TurnRight();
-  } else if(lineError == 6 && !dontTurnRight) {
+  } 
+  else if(lineError == 6) 
+  {
     TurnRightWithEncoder(30);
-  } else if(lineError == -6) {
+  } 
+  else if(lineError == -6) 
+  {
     TurnLeftWithEncoder(30);
-  } else if(lineError == 7) {
+  } 
+  else if(lineError == 7) 
+  {
     isScriptRunning = true;
-  } else if(lineError == 8) {
+  } 
+  else if(lineError == 8)
+   {
     MoveForward();
-  } else if(lineError == 9) {
-    isObstacleCourse = true;
-  }
-  } dontTurnRight = false;
+  } 
 }
 
 void MoveRobotAndFindLine() {
@@ -528,7 +553,7 @@ void IRRead() {
 }
 
 void LineErrorWindowSetup() {
-  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE; i++)
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++)
     lineErrorWindow[i] = 0;
 }
 
@@ -606,12 +631,14 @@ bool IsLineErrorNormalizing() {
 
 bool IsObstacleCourseStarting() {
   int obstacleCourseCounter = 0;
-  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE; i++) {
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
     if(lineErrorWindow[i] == 8) {
       obstacleCourseCounter++;
     }
     if(obstacleCourseCounter >= 4)
+     {
       return true;
+     }
   }
   return false;
 }
@@ -668,7 +695,7 @@ void SonarInit(){
   }
 }
 
-float SimpleSonarRead() {
+long SimpleSonarRead() {
   digitalWrite(sonarTrigPin, LOW);
   delayMicroseconds(2);
 
@@ -885,12 +912,18 @@ void FindLine(){
 }
 
 void MoveForwardWithEncoder2(int amountInMm) {
+  noInterrupts();
   isReadingEncoder = true;
+  interrupts();
   while(encoderACounter < amountInMm || encoderBCounter < amountInMm) {
     MoveForward();
+    Serial.println(encoderACounter);
+    Serial.println(encoderBCounter);
   }
   MotorStop();
+  noInterrupts();
   isReadingEncoder = false;
+  interrupts();
   ResetEncoder();
   return;
 }
