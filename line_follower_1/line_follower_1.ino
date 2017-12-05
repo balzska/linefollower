@@ -60,6 +60,12 @@ bool isScriptRunning = false;
 bool isObstacleCourse = false;
 int scriptTaskCounter = 0;
 
+//OBSTACLE COURSE
+int OCUnitSize = 10;
+bool OCIsPreferedSideRight = false;
+int OCDisplacementInUnit = 0;
+bool OCIsWorking = false;
+
 //-------------------------------------------//
 
 void setup() {
@@ -168,8 +174,8 @@ ISR(TIMER1_COMPA_vect){
   }
 
   if(isObstacleCourse) {
-    MotorStop();
-    isMoving = false;
+    if(!OCIsWorking)
+      DoObstacleCourse();
   }
 
   if(isEncoderCorrection) {
@@ -183,6 +189,114 @@ ISR(TIMER1_COMPA_vect){
       timerCount = 0;
     }
   }
+}
+
+void DoObstacleCourse() {
+  OCIsWorking = true;
+  IRRead();
+  int sensorError = GetSensorError();
+  if(sensorError != 5) {
+    //reached the edge of the map, try something else
+    MotorStop();
+  }
+
+  float sonarValue = SimpleSonarRead();
+  if(sonarValue < sonarDistanceRestriction && sonarValue >= sonarMinimumRange) {
+    //turn prefered direction
+    //if the path is clear 
+    //  move forward one unit
+    //  log movement
+    //  turn opposite prefered direction
+    //  return
+    //else 
+    //  turn opposite prefered direction
+    //  change prefered direction
+    //  return
+    OCTurnPreferedDirection();
+    sonarValue = SimpleSonarRead();
+    if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+      OCMoveForwardOneUnit();
+      OCDisplacementInUnit++;
+      OCTurnOppositePreferedDirection();
+      OCIsWorking = false;
+      return;
+    } else {
+      OCTurnOppositePreferedDirection();
+      OCIsPreferedSideRight = !OCIsPreferedSideRight;
+      OCIsWorking = false;
+      return;
+    }
+    
+  } else if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+    //move forward one unit
+    //if movement log 0
+    //  return
+    //else
+    //  turn opposite prefered direction
+    //  if path is clear
+    //    move forward one unit
+    //    remove movement log
+    //    turn prefered direction
+    //    return
+    //  else
+    //    turn prefered direction
+    //    return
+    OCMoveForwardOneUnit();
+    if(OCDisplacementInUnit == 0) {
+      OCIsWorking = false;
+      return;
+    } else {
+      OCTurnOppositePreferedDirection();
+      sonarValue = SimpleSonarRead();
+      if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+        OCMoveForwardOneUnit();
+        OCDisplacementInUnit--;
+        OCTurnPreferedDirection();
+        OCIsWorking = false;
+        return;
+      } else {
+        OCTurnPreferedDirection();
+        OCIsWorking = false;
+        return;
+      }
+    }
+  }
+}
+
+void OCTurnPreferedDirection() {
+  OCIsWorking = true;
+  if(OCIsPreferedSideRight)
+    TurnRightWithEncoder(90);
+  else
+    TurnLeftWithEncoder(90);
+  OCIsWorking = false;
+}
+
+void OCTurnOppositePreferedDirection() {
+  OCIsWorking = true;
+  if(!OCIsPreferedSideRight)
+    TurnRightWithEncoder(90);
+  else
+    TurnLeftWithEncoder(90);
+  OCIsWorking = false;
+}
+
+void OCTurnLeft(){
+  OCIsWorking = true;  
+  TurnLeftWithEncoder2(90);
+  OCIsWorking = false;
+}
+
+void OCTurnRight(){
+  OCIsWorking = true;
+  TurnRightWithEncoder2(90);
+  OCIsWorking = false;
+}
+
+void OCMoveForwardOneUnit() {
+  OCIsWorking = true;
+  MoveForwardWithEncoder2(OCUnitSize);
+  OCIsWorking = false;
 }
 
 void DoSlalom() {
@@ -530,6 +644,21 @@ void SonarInit(){
   }
 }
 
+float SimpleSonarRead() {
+  digitalWrite(sonarTrigPin, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(sonarTrigPin, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(sonarTrigPin, LOW);
+  sonarDuration = pulseIn(sonarEchoPin, HIGH);
+
+  sonarDistance = sonarDuration / 58.2;
+
+  return sonarDistance;
+}
+
 float SonarRead(){
   float windowMean = 0;
   
@@ -733,15 +862,14 @@ void FindLine(){
 }
 
 void MoveForwardWithEncoder2(int amountInMm) {
-  EnableEncoderCorrection();
-  MoveForward();
-
-  double distanceInEncoderHits = amountInMm / 0.52;
-  if(encoderACounter >= distanceInEncoderHits || encoderBCounter >= distanceInEncoderHits) {
-    MotorStop();
-    isReadingEncoder = false;
-    ResetEncoder();
+  isReadingEncoder = true;
+  while(encoderACounter < amountInMm || encoderBCounter < amountInMm) {
+    MoveForward();
   }
+  MotorStop();
+  isReadingEncoder = false;
+  ResetEncoder();
+  return;
 }
 
 void MoveForwardWithEncoder(int amountInMm) {
@@ -780,21 +908,14 @@ void correctMotorError(int encoderACountInterval, int encoderBCountInterval) {
 }
 
 void TurnLeftWithEncoder2(int amountInDegrees) {
-  if(!isSpecialTaskRunning) {
-    MotorStop();
-    isReadingEncoder = true;
-    encoderBCounter = 0;
-    isSpecialTaskRunning = true;
-  }
-
+  isReadingEncoder = true;
   while(encoderBCounter < amountInDegrees) {
     TurnLeft();
   }
-
   MotorStop();
-  ResetEncoder();
   isReadingEncoder = false;
-  isSpecialTaskRunning = false;
+  ResetEncoder();
+  return;
 }
 
 void TurnLeftWithEncoder(int amountInDegrees) {
@@ -815,6 +936,17 @@ void TurnLeftWithEncoder(int amountInDegrees) {
     if(isScriptRunning)
       scriptTaskCounter++;
   }
+}
+
+void TurnRightWithEncoder2(int amountInDegrees) {
+  isReadingEncoder = true;
+  while(encoderACounter < amountInDegrees) {
+    TurnRight();
+  }
+  MotorStop();
+  isReadingEncoder = false;
+  ResetEncoder();
+  return;
 }
 
 void TurnRightWithEncoder(int amountInDegrees) {
