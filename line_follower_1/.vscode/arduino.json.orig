@@ -1,6 +1,11 @@
 {
     "board": "arduino:avr:mega",
     "configuration": "cpu=atmega2560",
+<<<<<<< HEAD
+    "port": "COM3",
+    "sketch": "line_follower_1.ino"
+=======
     "sketch": "line_follower_1.ino",
     "port": "/dev/cu.wchusbserial1410"
+>>>>>>> origin/ObstacleCourse
 }
