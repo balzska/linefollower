@@ -60,6 +60,12 @@ bool isScriptRunning = false;
 bool isObstacleCourse = false;
 int scriptTaskCounter = 0;
 
+//LANECHANGE
+bool isLaneChangeLeft = false;
+bool isLaneChangeRight = false;
+int laneChangeTimeCounter = 0;
+
+
 //-------------------------------------------//
 
 void setup() {
@@ -138,6 +144,9 @@ ISR(TIMER1_COMPA_vect){
   //ISR beepitett fuggveny
   //akkor fut le, ha megtortenik a timer megszakitas
 
+  isLaneChangeLeft = IsChangeLaneLeft();
+  isLaneChangeRight = IsChangeLaneRight();
+
   if(!isScriptRunning && !isObstacleCourse) {
     /*float sonarValue = SonarRead();
     if(sonarValue < sonarDistanceRestriction && sonarValue >= sonarMinimumRange) {
@@ -146,6 +155,24 @@ ISR(TIMER1_COMPA_vect){
     } else if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
       //isMoving = true;
     }*/
+
+    if (isLaneChangeLeft)
+    {
+      while (laneChangeTimeCounter <= 8)
+      {
+      TurnLeft();
+      laneChangeTimeCounter++;
+      }
+    }
+
+    if (isLaneChangeRight)
+    {
+      while (laneChangeTimeCounter <= 8)
+      {
+      TurnRight();
+      laneChangeTimeCounter++;
+      }
+    }
 
     if(isMoving && !isFindingLine) {
       if(!isSpecialTaskRunning) {
@@ -282,6 +309,26 @@ void MoveRobot(){
   //Serial.println(LineErrorWindowProcess());
   lineError = LineErrorWindowProcess();
   Serial.println(lineError);
+
+laneChangeTimeCounter = 0;
+
+  bool dontTurnRight = false;
+  
+ /*   if (IsChangeLaneLeft())
+    {
+      MotorStop();
+      TurnLeftSlight();
+      dontTurnRight = true;
+    }
+  
+    if (IsChangeLaneRight())
+    {
+      MotorStop();
+      TurnRightSlight();
+    }
+*/
+    if (!dontTurnRight)
+    {
   if(lineError == 0){
     MoveForward();
   } else if (lineError == 5) {
@@ -303,6 +350,7 @@ void MoveRobot(){
   } else if(lineError == 9) {
     isObstacleCourse = true;
   }
+  } dontTurnRight = false;
 }
 
 void MoveRobotAndFindLine() {
@@ -396,6 +444,30 @@ void LineErrorWindowPush(int errorValue) {
 
 bool IsLineErrorChanged() {
   return lineErrorWindow[0] != lineErrorWindow[1];
+}
+
+bool IsChangeLaneLeft() {
+  int temp = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    if(lineErrorWindow[i] == 15)
+      temp++;
+    if(temp >= 2)
+      return true;
+  }
+  return false;
+}
+
+bool IsChangeLaneRight() {
+  if(lineErrorWindow[0] != 16)
+    return false;
+  int temp = 0;
+  for(int i = 0; i < LINE_ERROR_WINDOW_SIZE - 1; i++) {
+    if(lineErrorWindow[i] == 16)
+      temp++;
+    if(temp >= 4)
+      return true;
+  }
+  return false;
 }
 
 int LineErrorChangeAmount() {
@@ -597,7 +669,7 @@ int GetSensorError(){
     } else if(
       sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
-      sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
+     // sensorValues[2] < DEFAULT_SENSOR_DISTANCE &&
       sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[4] < DEFAULT_SENSOR_DISTANCE
     ) {
@@ -640,14 +712,33 @@ int GetSensorError(){
       //p fordulo, vagy akadalypalya
       lineError = 8;
     } else if(
-      sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
-      sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
+  //    sensorValues[1] >= DEFAULT_SENSOR_DISTANCE &&
       sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
-      sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
-      sensorValues[4] < DEFAULT_SENSOR_DISTANCE
+     // sensorValues[3] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] >= DEFAULT_SENSOR_DISTANCE
     ) {
       //szlalom (script)
       lineError = 7;
+    }  else if(
+      sensorValues[0] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
+ //     sensorValues[3] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] >= DEFAULT_SENSOR_DISTANCE
+    ) 
+    {
+      lineError = 15;
+    }
+    else if(
+      sensorValues[0] >= DEFAULT_SENSOR_DISTANCE &&
+   //   sensorValues[1] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[2] >= DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[3] < DEFAULT_SENSOR_DISTANCE &&
+      sensorValues[4] < DEFAULT_SENSOR_DISTANCE
+    ) 
+    {
+      lineError = 16;
     } else {
       //LOST LINE
       lineError = 5; 
@@ -826,5 +917,18 @@ void B_motorStop(){
   digitalWrite(B_MotorDir1, LOW);
   digitalWrite(B_MotorDir2, LOW);
   digitalWrite(B_MotorEnable, LOW);
+}
+
+void TurnLeftSlight(){
+  B_motorF();
+  analogWrite(B_MotorEnable, 53);
+  A_motorStop();
+}
+
+void TurnRightSlight()
+{
+  A_motorF();
+  analogWrite(A_MotorEnable, 53);
+  B_motorStop();
 }
 
