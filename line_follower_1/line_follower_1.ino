@@ -18,7 +18,7 @@
 #define Encoder_A 19
 #define Encoder_B 18
 
-#define ServoPin 9
+#define ServoPin 13
 
 //SERVO
 Servo servo;
@@ -120,10 +120,12 @@ void setup() {
 
   //servo
   servo.attach(ServoPin);
+  servo.write(90);  
 }
 long directionConstant = 0;
 
 String dir = "";
+int mapSensorValues[7];
 void loop() {
   //delayMicroseconds(1000);
   //IRRead();
@@ -145,20 +147,32 @@ void loop() {
   if(dir == "bwd") {
     MoveForward();
   } else if(dir == "fwd") {
-
-    long sonVal = SimpleSonarRead();
-    mySerial.println(round(sonVal));
-
-    servo.write(45);      // Turn SG90 servo Left to 45 degrees
-   delay(1000);          // Wait 1 second
-   servo.write(90);      // Turn SG90 servo back to 90 degrees (center position)
-   delay(1000);          // Wait 1 second
-   servo.write(135);     // Turn SG90 servo Right to 135 degrees
-   delay(1000);          // Wait 1 second
-   servo.write(90);      // Turn SG90 servo back to 90 degrees (center position)
-   delay(1000);
-
     MoveBackward();
+  } else if (dir == "scn") {
+    servo.write(45);
+    delay(1000);
+    mapSensorValues[0] = int(SimpleSonarRead());
+    servo.write(60);
+    delay(1000);
+    mapSensorValues[1] = int(SimpleSonarRead());
+    servo.write(75);
+    delay(1000);
+    mapSensorValues[2] = int(SimpleSonarRead());
+    servo.write(90);
+    delay(1000);
+    mapSensorValues[3] = int(SimpleSonarRead());
+    servo.write(105);
+    delay(1000);
+    mapSensorValues[4] = int(SimpleSonarRead());
+    servo.write(120);
+    delay(1000);
+    mapSensorValues[5] = int(SimpleSonarRead());
+    servo.write(135);
+    delay(1000);
+    mapSensorValues[6] = int(SimpleSonarRead());
+    servo.write(90);
+    delay(1000);
+    mySerial.println(String(mapSensorValues[0]) + " " + String(mapSensorValues[1]) + " " + String(mapSensorValues[2]) + " " + String(mapSensorValues[3]) + " " + String(mapSensorValues[4]) + " " + String(mapSensorValues[5]) + " " + String(mapSensorValues[6]));
   } else {
     MotorStop();
   }
@@ -227,12 +241,12 @@ void Timer1Init(){
   interrupts();
 }
 
-ISR(TIMER1_COMPA_vect){
-  //ISR beepitett fuggveny
-  //akkor fut le, ha megtortenik a timer megszakitas
-
-  //BTComm();
-}
+//ISR(TIMER1_COMPA_vect){
+//  //ISR beepitett fuggveny
+//  //akkor fut le, ha megtortenik a timer megszakitas
+//
+//  //BTComm();
+//}
 
 // ISR(TIMER1_COMPA_vect){
 //   //ISR beepitett fuggveny
