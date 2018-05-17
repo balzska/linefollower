@@ -1,17 +1,28 @@
+#include <Servo.h>
+
+#include <SoftwareSerial.h>
+#include <ArduinoJson.h>
+
 //LEGS
 #define A_MotorEnable 2
 #define A_MotorDir1 3
 #define A_MotorDir2 4
 
-#define B_MotorEnable 5
+#define B_MotorEnable 7
 #define B_MotorDir1 6
-#define B_MotorDir2 7
+#define B_MotorDir2 5
 
 #define sonarEchoPin 9
 #define sonarTrigPin 8
 
 #define Encoder_A 19
 #define Encoder_B 18
+
+#define ServoPin 9
+
+//SERVO
+Servo servo;
+int servoAngle = 0;
 
 //TIMER
 int timerCount = 0;
@@ -27,7 +38,7 @@ const int LINE_ERROR_WINDOW_SAFE = 3;
 int lineErrorWindow [LINE_ERROR_WINDOW_SIZE];
 
 //MOTOR
-int A_RPM_Correction = 5;
+int A_RPM_Correction = 0;
 int B_RPM_Correction = 0;
 const int RPM = 80;
 const int TURN_CONSTANT = 10;
@@ -71,10 +82,17 @@ bool OCIsPreferedSideRight = false;
 int OCDisplacementInUnit = 0;
 bool OCIsWorking = false;
 
+//BT
+SoftwareSerial mySerial(10, 11); //RX, TX
+
 //-------------------------------------------//
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(38400);
+  Serial.println("Hello server!!");
+
+  mySerial.begin(9600);
+  mySerial.println("Hello client!!");
 
   //sonar
   pinMode(sonarTrigPin, OUTPUT);
@@ -99,8 +117,13 @@ void setup() {
 
   //motor
   isMoving = true;
-}
 
+  //servo
+  servo.attach(ServoPin);
+}
+long directionConstant = 0;
+
+String dir = "";
 void loop() {
   //delayMicroseconds(1000);
   //IRRead();
@@ -108,11 +131,70 @@ void loop() {
   //Serial.println(SonarRead());
   //MoveRobot();
   //MoveStraightWithSonar();
+  dir = BTComm();
+  if(directionConstant > 0) {
+    B_RPM_Correction = -15;
+    A_RPM_Correction += 15; 
+  } else if (directionConstant < 0) {
+    A_RPM_Correction = -15;
+    B_RPM_Correction += 15;
+  } else {
+    A_RPM_Correction = 0;
+    B_RPM_Correction = 0;
+  }
+  if(dir == "bwd") {
+    MoveForward();
+  } else if(dir == "fwd") {
+
+    long sonVal = SimpleSonarRead();
+    mySerial.println(round(sonVal));
+
+    servo.write(45);      // Turn SG90 servo Left to 45 degrees
+   delay(1000);          // Wait 1 second
+   servo.write(90);      // Turn SG90 servo back to 90 degrees (center position)
+   delay(1000);          // Wait 1 second
+   servo.write(135);     // Turn SG90 servo Right to 135 degrees
+   delay(1000);          // Wait 1 second
+   servo.write(90);      // Turn SG90 servo back to 90 degrees (center position)
+   delay(1000);
+
+    MoveBackward();
+  } else {
+    MotorStop();
+  }
 }
 
 //-------------------------------------------//
 
 //FUNCTIONS
+
+String inputString;
+
+String BTComm() {
+  const char* move = "";
+  long turn = 0;
+  if (mySerial.available()) {
+    /*Serial.write(mySerial.read());
+    while(mySerial.available()) {
+      inputString = mySerial.readString();
+      
+    }
+    if (inputString.length() >0) {
+      Serial.println(inputString);
+      inputString = "";
+    }*/
+
+    
+    DynamicJsonBuffer jsonBuffer(1024);
+    JsonObject& root = jsonBuffer.parseObject(mySerial);
+    move = root["move"];
+    turn = root["turn"];
+  }
+
+  directionConstant = turn;
+
+  return String(move);
+}
 
 void Timer1Init(){
   noInterrupts();
@@ -149,76 +231,83 @@ ISR(TIMER1_COMPA_vect){
   //ISR beepitett fuggveny
   //akkor fut le, ha megtortenik a timer megszakitas
 
-  Serial.println("ISR START");
-
-  isLaneChangeLeft = IsChangeLaneLeft();
-  isLaneChangeRight = IsChangeLaneRight();
-
-  if(!isScriptRunning && !isObstacleCourse) {
-    /*float sonarValue = SonarRead();
-    if(sonarValue < sonarDistanceRestriction && sonarValue >= sonarMinimumRange) {
-      MotorStop();
-      isMoving = false;
-    } else if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
-      //isMoving = true;
-    }*/
-
-    if (isLaneChangeLeft)
-    {
-      while (laneChangeTimeCounter <= 6)
-      {
-      TurnLeft();
-      laneChangeTimeCounter++;
-      }
-    }
-
-    if (isLaneChangeRight)
-    {
-      while (laneChangeTimeCounter <= 6)
-      {
-      TurnRight();
-      laneChangeTimeCounter++;
-      }
-    }
-
-    if(isMoving && !isFindingLine  && !isObstacleCourse) {
-      if(!isSpecialTaskRunning) {
-        IRRead();
-        int sensorError = GetSensorError();
-      }
-      MoveRobot();
-    }
-
-    if(isMoving && isFindingLine) {
-      IRRead();
-      int sensorError = GetSensorError();
-      MoveRobotAndFindLine();
-    }
-  }
-
-  if(isScriptRunning) {
-    isMoving = false;
-    DoSlalom();
-  }
-
-  if(isObstacleCourse) {
-    if(!OCIsWorking)
-      DoObstacleCourse();
-   // Serial.println("daaasasd");
-  }
-
-  if(isEncoderCorrection) {
-    timerCount++;
-    if(timerCount == 100){
-      correctMotorError(encoderACorrectionCounter, encoderBCorrectionCounter);
-      ResetEncoderCorrection();
-      Serial.println(A_RPM_Correction);
-      Serial.println(B_RPM_Correction);
-
-      timerCount = 0;
-    }
-  }
+  //BTComm();
 }
+
+// ISR(TIMER1_COMPA_vect){
+//   //ISR beepitett fuggveny
+//   //akkor fut le, ha megtortenik a timer megszakitas
+
+//   Serial.println("ISR START");
+
+//   isLaneChangeLeft = IsChangeLaneLeft();
+//   isLaneChangeRight = IsChangeLaneRight();
+
+//   if(!isScriptRunning && !isObstacleCourse) {
+//     /*float sonarValue = SonarRead();
+//     if(sonarValue < sonarDistanceRestriction && sonarValue >= sonarMinimumRange) {
+//       MotorStop();
+//       isMoving = false;
+//     } else if(sonarValue > sonarDistanceRestriction && sonarValue <= sonarMaximumRange) {
+//       //isMoving = true;
+//     }*/
+
+//     if (isLaneChangeLeft)
+//     {
+//       while (laneChangeTimeCounter <= 6)
+//       {
+//       TurnLeft();
+//       laneChangeTimeCounter++;
+//       }
+//     }
+
+//     if (isLaneChangeRight)
+//     {
+//       while (laneChangeTimeCounter <= 6)
+//       {
+//       TurnRight();
+//       laneChangeTimeCounter++;
+//       }
+//     }
+
+//     if(isMoving && !isFindingLine  && !isObstacleCourse) {
+//       if(!isSpecialTaskRunning) {
+//         IRRead();
+//         int sensorError = GetSensorError();
+//       }
+//       MoveRobot();
+//     }
+
+//     if(isMoving && isFindingLine) {
+//       IRRead();
+//       int sensorError = GetSensorError();
+//       MoveRobotAndFindLine();
+//     }
+//   }
+
+//   if(isScriptRunning) {
+//     isMoving = false;
+//     DoSlalom();
+//   }
+
+//   if(isObstacleCourse) {
+//     if(!OCIsWorking)
+//       DoObstacleCourse();
+//    // Serial.println("daaasasd");
+//   }
+
+//   if(isEncoderCorrection) {
+//     timerCount++;
+//     if(timerCount == 100){
+//       correctMotorError(encoderACorrectionCounter, encoderBCorrectionCounter);
+//       ResetEncoderCorrection();
+//       Serial.println(A_RPM_Correction);
+//       Serial.println(B_RPM_Correction);
+
+//       timerCount = 0;
+//     }
+//   }
+// }
 
 void DoObstacleCourse() {
   MotorStop();
@@ -1144,18 +1233,5 @@ void B_motorStop(){
   digitalWrite(B_MotorDir1, LOW);
   digitalWrite(B_MotorDir2, LOW);
   digitalWrite(B_MotorEnable, LOW);
-}
-
-void TurnLeftSlight(){
-  B_motorF();
-  analogWrite(B_MotorEnable, 56);
-  A_motorStop();
-}
-
-void TurnRightSlight()
-{
-  A_motorF();
-  analogWrite(A_MotorEnable, 70);
-  B_motorStop();
 }
 
